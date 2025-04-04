@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+// import 'package:flutter_dotenv/flutter_dotenv.dart';
+// import 'dart:io';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://goyrpuevsmetvfaqcejd.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdveXJwdWV2c21ldHZmYXFjZWpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM3NjU1MDMsImV4cCI6MjA1OTM0MTUwM30._5rvv7Hwl54xJXjH-jWjPJKBWaYLI_GqBqBr55YfaAo',
+  );
+
+
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
