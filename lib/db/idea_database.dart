@@ -7,27 +7,42 @@ import 'dart:convert';
 
 part 'idea_database.g.dart';
 
-// Drift table definition
+/// 🧠 Ideas table (aligned with Supabase)
 class Ideas extends Table {
   TextColumn get id => text()(); // UUID
-  TextColumn get userId => text()();
+  TextColumn get userId => text()(); // Supabase auth.users FK
   TextColumn get title => text()();
   TextColumn get description => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get voiceInput => boolean().withDefault(const Constant(false))();
+
+  // Local-only cached tags (from many-to-many join)
   TextColumn get tagsJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Ideas])
+/// 🏷 Tags table (aligned with Supabase)
+class Tags extends Table {
+  TextColumn get id => text()(); // UUID
+  TextColumn get userId => text()(); // Supabase FK
+  TextColumn get name => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => ['UNIQUE(user_id, name)'];
+}
+
+@DriftDatabase(tables: [Ideas, Tags])
 class IdeaDatabase extends _$IdeaDatabase {
   IdeaDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -38,10 +53,13 @@ class IdeaDatabase extends _$IdeaDatabase {
       if (from < 3) {
         await m.addColumn(ideas, ideas.tagsJson);
       }
+      if (from < 4) {
+        await m.createTable(tags);
+      }
     },
   );
 
-  // Helper: Convert tags JSON -> List<String>
+  /// 🔁 Tag <-> JSON Helpers
   List<String> getTagsFromJson(String? tagsJson) {
     if (tagsJson == null || tagsJson.isEmpty) return [];
     try {
@@ -52,18 +70,14 @@ class IdeaDatabase extends _$IdeaDatabase {
     }
   }
 
-  // Helper: Convert List<String> -> JSON
   String? getJsonFromTags(List<String> tags) {
     if (tags.isEmpty) return null;
     return json.encode(tags);
   }
 
-  // Get all ideas
-  Future<List<Idea>> getAllIdeas() async {
-    return await select(ideas).get();
-  }
+  /// 📥 Idea CRUD
+  Future<List<Idea>> getAllIdeas() => select(ideas).get();
 
-  // Insert/overwrite idea
   Future<void> createNewIdea({
     required String id,
     required String userId,
@@ -75,7 +89,6 @@ class IdeaDatabase extends _$IdeaDatabase {
     List<String> tags = const [],
   }) async {
     final tagsJson = getJsonFromTags(tags);
-
     await into(ideas).insertOnConflictUpdate(
       IdeasCompanion(
         id: Value(id),
@@ -90,19 +103,50 @@ class IdeaDatabase extends _$IdeaDatabase {
     );
   }
 
-  //Update idea
   Future<void> updateIdea(Idea idea) async {
     await update(ideas).replace(idea);
   }
 
-  //Delete idea by id
   Future<void> deleteIdeaById(String id) async {
     await (delete(ideas)..where((tbl) => tbl.id.equals(id))).go();
   }
 
-  // clear DB (testing only)
-  Future<void> deleteAllIdeas() async {
-    await delete(ideas).go();
+  Future<void> deleteAllIdeas() async => await delete(ideas).go();
+
+  Future<List<Idea>> searchIdeas(String query) async {
+    return (select(ideas)
+          ..where((tbl) =>
+              tbl.title.contains(query) |
+              tbl.description.contains(query)))
+        .get();
+  }
+
+  /// 🏷 Tag CRUD
+  Future<void> insertTag({
+    required String id,
+    required String userId,
+    required String name,
+  }) async {
+    await into(tags).insert(
+      TagsCompanion(
+        id: Value(id),
+        userId: Value(userId),
+        name: Value(name),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  Future<List<Tag>> getAllTags({String? userId}) {
+    final query = select(tags);
+    if (userId != null) {
+      query.where((t) => t.userId.equals(userId));
+    }
+    return query.get();
+  }
+
+  Future<void> deleteTagById(String tagId) async {
+    await (delete(tags)..where((t) => t.id.equals(tagId))).go();
   }
 }
 
