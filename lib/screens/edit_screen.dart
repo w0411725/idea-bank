@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 import '../db/idea_database.dart';
+import '../state/idea_provider.dart';
+import 'dart:io' show Platform;
 
 class EditScreen extends StatefulWidget {
   final IdeaDatabase db;
@@ -22,6 +26,9 @@ class _EditScreenState extends State<EditScreen> {
   final _descController = TextEditingController();
   final _newTagController = TextEditingController();
 
+  final SpeechToText _speech = SpeechToText();
+  bool _isListening = false;
+
   bool _voiceInput = false;
   List<String> _availableTags = [];
   List<String> _selectedTags = [];
@@ -29,6 +36,7 @@ class _EditScreenState extends State<EditScreen> {
   @override
   void initState() {
     super.initState();
+    _initSpeech();
 
     if (widget.existingIdea != null) {
       _titleController.text = widget.existingIdea!.title;
@@ -38,6 +46,59 @@ class _EditScreenState extends State<EditScreen> {
     }
 
     _loadTags();
+  }
+
+  Future<void> _initSpeech() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      debugPrint('🛑 Speech not supported on this platform.');
+      return;
+    }
+
+    try {
+      await _speech.initialize();
+    } catch (e) {
+      debugPrint('⚠ Failed to initialize speech: $e');
+    }
+  }
+
+  Future<void> _startVoiceInput() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Speech input not supported on this platform.')),
+      );
+      return;
+    }
+
+    if (!_isListening) {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() {
+          _isListening = true;
+          _voiceInput = true;
+        });
+
+        _speech.listen(
+          onResult: (result) {
+            setState(() {
+              if (_descController.text.isEmpty) {
+                _descController.text = result.recognizedWords;
+              } else {
+                _descController.text += ' ${result.recognizedWords}';
+              }
+
+              if (result.finalResult) {
+                _isListening = false;
+              }
+            });
+          },
+        );
+      }
+    } else {
+      setState(() {
+        _isListening = false;
+        _speech.stop();
+      });
+    }
   }
 
   Future<void> _loadTags() async {
@@ -91,7 +152,18 @@ class _EditScreenState extends State<EditScreen> {
       tags: _selectedTags,
     );
 
+    if (!mounted) return;
+    Provider.of<IdeaProvider>(context, listen: false).refresh();
     Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    _newTagController.dispose();
+    _speech.cancel();
+    super.dispose();
   }
 
   @override
@@ -123,14 +195,30 @@ class _EditScreenState extends State<EditScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descController,
-                decoration: const InputDecoration(labelText: 'Description'),
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  suffixIcon: IconButton(
+                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                    onPressed: _startVoiceInput,
+                    color: _isListening ? Colors.red : null,
+                  ),
+                ),
                 maxLines: 3,
               ),
+              if (_isListening)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    'Listening...',
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                ),
               const SizedBox(height: 12),
               SwitchListTile(
-                title: const Text('Voice Input?'),
+                title: const Text('Voice Input Used?'),
+                subtitle: const Text('Auto-enabled when using the mic'),
                 value: _voiceInput,
-                onChanged: (val) => setState(() => _voiceInput = val),
+                onChanged: null, // ← disables interaction safely
               ),
               const SizedBox(height: 16),
               Text('Tags', style: Theme.of(context).textTheme.titleMedium),
@@ -141,7 +229,8 @@ class _EditScreenState extends State<EditScreen> {
                   return FilterChip(
                     label: Text(tag),
                     selected: isSelected,
-                    selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                    selectedColor:
+                        Theme.of(context).colorScheme.primaryContainer,
                     checkmarkColor: Colors.white,
                     onSelected: (selected) {
                       setState(() {

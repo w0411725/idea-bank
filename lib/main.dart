@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'theme/app_theme.dart';
 import 'db/idea_database.dart';
-import 'services/supabase_service.dart';
-import 'screens/home_screen.dart';
+import 'services/auth_service.dart';
+import 'state/idea_provider.dart';
 import 'state/theme_notifier.dart';
+import 'routes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,43 +23,18 @@ void main() async {
   );
   print('✅ Supabase initialized');
 
-  // Sign in test user
-  final authResponse = await Supabase.instance.client.auth.signInWithPassword(
-    email: 'test@testmail.com',
-    password: 'testpassword',
-  );
-
-  if (authResponse.user == null) {
-    print('Login failed: ${authResponse.session?.accessToken}');
-    return;
-  } else {
-    print('Logged in as ${authResponse.user!.email}');
-  }
-
   final db = IdeaDatabase();
   print('Local Drift DB initialized');
 
-  final supabaseService = SupabaseService();
-  final remoteIdeas = await supabaseService.fetchUserIdeas();
-  print('Fetched ${remoteIdeas.length} ideas from Supabase');
-
-  for (final idea in remoteIdeas) {
-    print('Saving idea: ${idea.title}');
-    await db.createNewIdea(
-      id: idea.id,
-      userId: idea.userId,
-      title: idea.title,
-      description: idea.description,
-      createdAt: idea.createdAt,
-      updatedAt: idea.updatedAt,
-      voiceInput: idea.voiceInput,
-      tags: db.getTagsFromJson(idea.tagsJson),
-    );
-  }
-
-  print('All ideas synced to local DB');
-
-  runApp(MyApp(db: db));
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => IdeaProvider(db: db)),
+      ],
+      child: MyApp(db: db),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -69,14 +46,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, mode, __) => MaterialApp(
-        title: 'Idea Bank',
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: mode,
-        home: HomeScreen(db: db),
-        debugShowCheckedModeBanner: false,
-      ),
+      builder: (_, mode, __) {
+        return MaterialApp(
+          title: 'Idea Bank',
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: mode,
+          initialRoute: AppRoutes.login,
+          onGenerateRoute: RouteGenerator.generateRoute,
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }
+
