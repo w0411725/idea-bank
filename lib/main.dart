@@ -4,6 +4,7 @@ import 'theme/app_theme.dart';
 import 'db/idea_database.dart';
 import 'services/supabase_service.dart';
 import 'screens/home_screen.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +54,16 @@ void main() async {
   }
 
   print('✅ All ideas synced to local DB');
+
+  await Hive.initFlutter();
+  final prefsBox = await Hive.openBox('preferences');
+
+  // Save
+  prefsBox.put('theme', 'dark');
+
+  // Read
+  final theme = prefsBox.get('theme', defaultValue: 'light');
+
 
   runApp(MyApp(db: db));
 }

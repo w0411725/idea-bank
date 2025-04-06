@@ -9,7 +9,7 @@ part 'idea_database.g.dart';
 
 // Drift table definition
 class Ideas extends Table {
-  TextColumn get id => text()();
+  TextColumn get id => text()(); // UUID
   TextColumn get userId => text()();
   TextColumn get title => text()();
   TextColumn get description => text().nullable()();
@@ -28,7 +28,7 @@ class IdeaDatabase extends _$IdeaDatabase {
 
   @override
   int get schemaVersion => 3;
-  
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) {
@@ -41,12 +41,9 @@ class IdeaDatabase extends _$IdeaDatabase {
     },
   );
 
-  // Helper to get tags from JSON
+  // Helper: Convert tags JSON -> List<String>
   List<String> getTagsFromJson(String? tagsJson) {
-    if (tagsJson == null || tagsJson.isEmpty) {
-      return [];
-    }
-    
+    if (tagsJson == null || tagsJson.isEmpty) return [];
     try {
       final List<dynamic> parsed = json.decode(tagsJson);
       return parsed.map((tag) => tag.toString()).toList();
@@ -54,37 +51,19 @@ class IdeaDatabase extends _$IdeaDatabase {
       return [];
     }
   }
-  
-  // Helper to convert tags to JSON
+
+  // Helper: Convert List<String> -> JSON
   String? getJsonFromTags(List<String> tags) {
-    if (tags.isEmpty) {
-      return null;
-    }
+    if (tags.isEmpty) return null;
     return json.encode(tags);
   }
 
-  // Get all ideas - directly return Drift's generated class
+  // Get all ideas
   Future<List<Idea>> getAllIdeas() async {
     return await select(ideas).get();
   }
 
-  // Insert an idea using Drift's generated class
-  Future<void> insertIdea(Idea idea) async {
-    await into(ideas).insert(
-      IdeasCompanion(
-        id: Value(idea.id),
-        userId: Value(idea.userId),
-        title: Value(idea.title),
-        description: Value(idea.description),
-        createdAt: Value(idea.createdAt),
-        updatedAt: Value(idea.updatedAt),
-        voiceInput: Value(idea.voiceInput),
-        tagsJson: Value(idea.tagsJson),
-      ),
-    );
-  }
-
-  // Helper method to create a new idea
+  // Insert/overwrite idea
   Future<void> createNewIdea({
     required String id,
     required String userId,
@@ -96,8 +75,8 @@ class IdeaDatabase extends _$IdeaDatabase {
     List<String> tags = const [],
   }) async {
     final tagsJson = getJsonFromTags(tags);
-    
-    await into(ideas).insert(
+
+    await into(ideas).insertOnConflictUpdate(
       IdeasCompanion(
         id: Value(id),
         userId: Value(userId),
@@ -111,9 +90,19 @@ class IdeaDatabase extends _$IdeaDatabase {
     );
   }
 
-  // Delete an idea
-  Future<void> deleteIdea(String id) async {
+  //Update idea
+  Future<void> updateIdea(Idea idea) async {
+    await update(ideas).replace(idea);
+  }
+
+  //Delete idea by id
+  Future<void> deleteIdeaById(String id) async {
     await (delete(ideas)..where((tbl) => tbl.id.equals(id))).go();
+  }
+
+  // clear DB (testing only)
+  Future<void> deleteAllIdeas() async {
+    await delete(ideas).go();
   }
 }
 

@@ -43,12 +43,31 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final idea = ideas[index];
 
-              return ListTile(
-                title: Text(idea.title),
-                subtitle: Text(
-                  idea.description ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              return Dismissible(
+                key: ValueKey(idea.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                onDismissed: (direction) async {
+                  await widget.db.deleteIdeaById(idea.id);
+                  setState(() {
+                    _ideasFuture = widget.db.getAllIdeas(); // reload list
+                  });
+                },
+                child: ListTile(
+                  title: Text(idea.title),
+                  subtitle: Text(
+                    idea.description ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () {
+                    // TODO: Navigate to edit form screen with `idea`
+                  },
                 ),
               );
             },
